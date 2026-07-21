@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Beyond Fill Rate — decision dashboard</title>
+<style>
+  :root { --navy:#14284B; --gold:#B08D2B; --red:#B3261E; --green:#2E6B4F; --ink:#1A1A1A; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#F7F6F3; color:var(--ink);
+         font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }
+  header { background:var(--navy); color:#fff; padding:34px 28px; }
+  header h1 { margin:0 0 6px; font-size:26px; letter-spacing:-.2px; }
+  header p { margin:0; opacity:.85; font-size:14px; }
+  .synthetic { display:inline-block; margin-top:12px; padding:4px 10px; border:1px solid rgba(255,255,255,.4);
+                border-radius:3px; font-size:11px; letter-spacing:.08em; text-transform:uppercase; }
+  main { max-width:1080px; margin:0 auto; padding:28px; }
+  .panel { background:#fff; border:1px solid #E3E0D8; border-radius:6px; padding:24px; margin-bottom:22px; }
+  .step { font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--gold); font-weight:700; }
+  h2 { margin:6px 0 4px; font-size:20px; color:var(--navy); }
+  .why { margin:0 0 18px; color:#555; font-size:14px; }
+  .hides { margin-top:16px; padding:11px 14px; background:#FBF7EC; border-left:3px solid var(--gold);
+            font-size:13px; color:#5A4A1F; }
+  .hides b { color:#3D3212; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .stat { text-align:center; padding:18px; border-radius:5px; }
+  .stat .n { font-size:38px; font-weight:700; line-height:1.1; }
+  .stat .l { font-size:12px; margin-top:6px; opacity:.85; }
+  .ops { background:#EAF2EC; color:var(--green); }
+  .cust { background:#FBEAE8; color:var(--red); }
+  .gap { text-align:center; margin:16px 0 4px; font-size:15px; }
+  .gap b { font-size:26px; color:var(--navy); }
+  table { width:100%; border-collapse:collapse; margin-top:6px; font-size:14px; }
+  th,td { padding:9px 10px; text-align:left; border-bottom:1px solid #EEE; }
+  th { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#777; }
+  .good { color:var(--green); } .bad { color:var(--red); }
+  .bar-row { display:flex; align-items:center; gap:12px; margin:7px 0; }
+  .bar-lbl { width:150px; font-size:13px; }
+  .bar-track { flex:1; height:20px; background:#EFEDE7; border-radius:3px; overflow:hidden; }
+  .bar-fill { height:100%; }
+  .bar-val { width:62px; text-align:right; font-variant-numeric:tabular-nums; font-size:13px; }
+  .verdict { margin-top:16px; padding:13px 16px; background:var(--navy); color:#fff; border-radius:5px; font-size:14px; }
+  .verdict b { color:#F0D48A; }
+  footer { max-width:1080px; margin:0 auto; padding:0 28px 44px; color:#777; font-size:12.5px; }
+  code { background:#F0EEE8; padding:1px 5px; border-radius:3px; font-size:12.5px; }
+  @media (max-width:760px) { .two { grid-template-columns:1fr; } .bar-lbl { width:96px; } }
+</style></head><body>
+
+<header>
+  <h1>Beyond Fill Rate</h1>
+  <p>Why is retention falling when fill rate has stayed above 95%?</p>
+  <span class="synthetic">Synthetic data · mechanisms real, magnitudes invented</span>
+</header>
+
+<main>
+
+  <div class="panel">
+    <div class="step">1 · The contradiction</div>
+    <h2>Both numbers are correct</h2>
+    <p class="why">The same 135,996 orders and 1,054,890 items, measured at two
+       different grains. Operations was right: fill rate never dropped.</p>
+    <div class="two">
+      <div class="stat ops"><div class="n">94.09%</div>
+        <div class="l">ITEM fill rate<br>what the shift report shows</div></div>
+      <div class="stat cust"><div class="n">66.85%</div>
+        <div class="l">ORDER fill rate<br>what the customer experiences</div></div>
+    </div>
+    <p class="gap">A gap of <b>27.2 points</b></p>
+    <div class="hides"><b>What this hides:</b> nothing yet — that is the problem. Two true
+      numbers, no argument attached. Keep reading; a number on a screen is what caused this.</div>
+  </div>
+
+  <div class="panel">
+    <div class="step">2 · The mechanism</div>
+    <h2>An order is clean only if <em>every</em> item is</h2>
+    <p class="why">P(clean order) = (1 − item miss rate) ^ basket size. At a
+       5.9% miss rate and a 7.8-item mean basket,
+       roughly a third of orders are broken by arithmetic — not by anyone doing their job badly.</p>
+    <div class="bar-row"><span class="bar-lbl">Item fill</span><div class="bar-track"><div class="bar-fill" style="width:94.1%;background:#2E6B4F"></div></div><span class="bar-val">94.09%</span></div>
+    <div class="bar-row"><span class="bar-lbl">Order fill</span><div class="bar-track"><div class="bar-fill" style="width:66.8%;background:#B3261E"></div></div><span class="bar-val">66.85%</span></div>
+    <div class="hides"><b>What this hides:</b> severity. A missing bag of crisps and missing
+      infant formula both make an order "unclean". The retention damage does not treat them
+      alike — high-intent stock-outs cost a further
+      <b>-3.07 pp</b>.</div>
+  </div>
+
+  <div class="panel">
+    <div class="step">3 · The inversion — this is the decision</div>
+    <h2>The ops metric ranks our best customers as well-served</h2>
+    <p class="why">Read the last two columns against each other.</p>
+    <table>
+      <tr><th>Basket size</th><th>Orders</th><th>Item fill</th><th>Order fill</th></tr>
+      <tr><td>1-3</td><td>20,824</td><td class='good'>93.78%</td><td class='bad'><b>85.85%</b></td></tr><tr><td>4-6</td><td>47,931</td><td class='good'>93.74%</td><td class='bad'><b>73.27%</b></td></tr><tr><td>7-10</td><td>36,023</td><td class='good'>94.06%</td><td class='bad'><b>62.75%</b></td></tr><tr><td>11-15</td><td>18,684</td><td class='good'>94.70%</td><td class='bad'><b>52.69%</b></td></tr><tr><td>16+</td><td>12,534</td><td class='good'>95.09%</td><td class='bad'><b>43.56%</b></td></tr>
+    </table>
+    <div class="verdict">Item fill rate says large baskets are served <b>slightly better</b>.
+      Order fill rate says <b>twice as badly</b>. Large baskets are the Weekly Stock-Up segment —
+      our highest-value customers. <b>The metric we optimise conceals that our best customers
+      get our worst experience.</b></div>
+    <div class="hides"><b>What this hides:</b> it does not tell you fill rate is cheap to fix.
+      Fill rate is bought with inventory, and inventory is the one thing a darkstore has no room
+      for. See <code>docs/01_problem.md</code>.</div>
+  </div>
+
+  <div class="panel">
+    <div class="step">4 · The cost</div>
+    <h2>A broken order costs 2.8× more on a first basket</h2>
+    <p class="why">Effect on 30-day repeat rate, with 95% confidence intervals.
+       New = 2 or fewer prior orders.</p>
+    <table>
+      <tr><th>Customer</th><th>Focal orders</th><th>Clean</th><th>Stocked out</th><th>Effect</th><th>95% CI</th></tr>
+      <tr><td><b>New</b></td><td>67,378</td><td>67.6%</td>
+          <td>59.5%</td><td class="bad"><b>-8.10 pp</b></td>
+          <td>[-8.86, -7.33]</td></tr>
+      <tr><td>Established</td><td>32,271</td><td>82.7%</td>
+          <td>79.8%</td><td>-2.91 pp</td>
+          <td>[-3.83, -1.98]</td></tr>
+    </table>
+    <div class="verdict">The pooled figure (-7.04 pp) averages two
+      populations that need <b>opposite decisions</b>. Do not put it on a dashboard.</div>
+    <div class="hides"><b>What this hides:</b> these are <b>observational</b>, not causal.
+      Stock-outs were not randomised. And there is no rider data in this warehouse — lateness
+      and stock-outs both spike at peak, so some of this effect may belong to lateness.
+      <b>This estimate is plausibly upward-biased.</b></div>
+  </div>
+
+  <div class="panel">
+    <div class="step">5 · The thing we cannot measure</div>
+    <h2>A quarter of our substitution offers do nothing</h2>
+    <p class="why">Nothing in any source system records whether a substitution was any
+       <em>good</em>. Three defensible proxies disagree by 4.6 pp,
+       so the magnitude is not reportable. The <b>ranking</b> is stable across proxies with
+       opposite selection problems — and ranking is what a picker actually needs.</p>
+    <table>
+      <tr><th>Swap type</th><th>Effect on repeat</th><th>95% CI</th><th>Verdict</th></tr>
+      <tr><td>same brand diff size</td><td><b>+5.70 pp</b></td><td>[+4.23, +7.17]</td><td><span class=good>real</span></td></tr><tr><td>diff brand same product</td><td><b>+3.11 pp</b></td><td>[+1.54, +4.69]</td><td><span class=good>real</span></td></tr><tr><td>diff product same cat</td><td><b>+1.10 pp</b></td><td>[-1.44, +3.63]</td><td><span class=bad>indistinguishable from nothing</span></td></tr>
+    </table>
+    <div class="verdict">Milk → laban is <b>statistically indistinguishable from offering
+      nothing at all</b>. That is not a null result. It is an instruction.</div>
+    <div class="hides"><b>What this hides:</b> the magnitudes above are proxy artefacts —
+      only the order is trustworthy. A one-question post-delivery survey would replace this
+      entire panel. See <code>docs/08_ambiguity.md</code>.</div>
+  </div>
+
+  <div class="panel">
+    <div class="step">6 · The experiment that looked fine</div>
+    <h2>A tidy null that was destroying the funnel</h2>
+    <p class="why">Pre-approved substitutions. Assignment at session start, exposure at
+       checkout — and the treatment adds a step that large baskets abandon.</p>
+    <table>
+      <tr><th>Check</th><th>Result</th><th>Reading</th></tr>
+      <tr><td>SRM at assignment</td><td>p = 0.77</td>
+          <td class="good">randomisation was performed correctly</td></tr>
+      <tr><td>SRM at checkout</td><td><b>p = 3.3e-153</b></td>
+          <td class="bad">randomisation did NOT survive</td></tr>
+      <tr><td>Retention among converters</td><td>-0.39 pp,
+          p = 0.30</td>
+          <td>"no effect — harmless, ship it"</td></tr>
+      <tr><td><b>Conversion</b></td><td class="bad"><b>-8.34 pp</b></td>
+          <td class="bad"><b>18.9% of treatment conversions destroyed</b></td></tr>
+      <tr><td>ITT (everyone assigned)</td><td class="bad">-5.88 pp</td>
+          <td class="bad">net harm</td></tr>
+    </table>
+    <div class="verdict">Not a fake win — a fake <b>harmless</b>. The retention metric is
+      conditioned on converting, and converting is exactly what the treatment broke.
+      <b>Nobody re-examines a null.</b> Decision: <b>DO NOT SHIP</b>.</div>
+    <div class="hides"><b>What this hides:</b> the feature idea is fine. The checkout
+      interstitial is what kills it. Move it out of the purchase path and re-test with
+      conversion as a required guardrail.</div>
+  </div>
+
+</main>
+
+<footer>
+  <p><b>This data is synthetic.</b> Generated by <code>src/generate_data.py</code>. The
+     mechanisms are structurally real; the magnitudes are invented. Please do not quote
+     66.85% as a fact about quick commerce — see
+     <code>docs/07_limitations.md</code>.</p>
+  <p>Every figure on this page is rendered from <code>reports/results.json</code> by
+     <code>src/build_dashboard.py</code>. Nothing is hand-typed.</p>
+</footer>
+</body></html>

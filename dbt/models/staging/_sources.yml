@@ -1,0 +1,35 @@
+version: 2
+
+sources:
+  - name: raw
+    description: >
+      Eight source systems, landed as CSV. Different owners, different grains,
+      different clocks, different latencies. Everything in staging/ exists to
+      make them comparable.
+    meta:
+      owner: "data platform"
+    tables:
+      - name: raw_order_events
+        description: "Order service event log. UTC. CONTAINS DUPLICATES (client retry, no idempotency key)."
+        meta: {grain: "one row per event (NOT per order)", latency: "real-time", owner: "order service"}
+      - name: raw_order_items
+        description: "Order line items. One row per order-item."
+        meta: {grain: "order_id + product_id", latency: "real-time", owner: "order service"}
+      - name: raw_fulfilment_events
+        description: "Picker/ops outcome per order. LATE-ARRIVING: ingested_at can trail fulfilled_at by up to 6h."
+        meta: {grain: "one row per order", latency: "up to 6h", owner: "warehouse ops"}
+      - name: raw_sessions
+        description: "App analytics sessions. UTC."
+        meta: {grain: "one row per session", latency: "real-time", owner: "app analytics"}
+      - name: raw_customers
+        description: "CRM export. is_test_account exists but is ALWAYS FALSE — the flag nobody sets."
+        meta: {grain: "one row per customer", latency: "daily", owner: "CRM"}
+      - name: raw_products
+        description: "Catalogue. SCD2 on price. ~3% NULL category (join failure)."
+        meta: {grain: "product_id + valid_from", latency: "daily", owner: "catalogue"}
+      - name: raw_darkstores
+        description: "Ops master data. SCD2 on catchment radius."
+        meta: {grain: "darkstore_id + valid_from", latency: "ad hoc", owner: "ops"}
+      - name: raw_experiment_assignments
+        description: "Experiment platform. Assignment written at SESSION START, not at exposure."
+        meta: {grain: "one row per session", latency: "real-time", owner: "experimentation"}

@@ -1,0 +1,41 @@
+# Beyond Fill Rate — warehouse build
+#
+# Layering is not decoration. Each layer has exactly one job, and a model that
+# does two jobs belongs in neither:
+#   staging      cast, rename, and REPAIR the source defect. Nothing else.
+#   intermediate joins and sequencing that more than one mart needs.
+#   marts        the star schema the business queries. Conformed, tested, stable.
+#
+# Materialisation: staging as views (cheap, always fresh), marts as tables
+# (queried repeatedly, worth the storage). On BigQuery the marts would be
+# partitioned on order_date_gst and clustered on darkstore_key — see
+# docs/03_data_model.md for why that choice and what it costs.
+name: 'beyond_fill_rate'
+version: '1.0.0'
+profile: 'beyond_fill_rate'
+
+model-paths: ["models"]
+test-paths: ["tests"]
+macro-paths: ["macros"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+models:
+  beyond_fill_rate:
+    staging:
+      +materialized: view
+      +schema: staging
+    intermediate:
+      +materialized: view
+      +schema: intermediate
+    marts:
+      +materialized: table
+      +schema: marts
+
+vars:
+  # The reporting business speaks GST. Every source system logs UTC. This var
+  # exists so the offset appears ONCE in the codebase instead of being retyped
+  # (and eventually mistyped) in forty models.
+  reporting_tz: 'Asia/Dubai'
+  retention_window_days: 30
+  tenure_new_max_prior_orders: 2

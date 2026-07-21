@@ -1,0 +1,215 @@
+# The experiment that looked fine
+
+*Pre-approved substitutions. A clean design, a clean readout, and a conclusion
+that would have been wrong.*
+
+Every figure here is rendered from `reports/results.json` by `src/render_docs.py`.
+Nothing is typed by hand.
+
+---
+
+## The feature
+
+When an item is out of stock, a picker currently phones or messages the customer
+mid-shop. It is slow, it interrupts, and roughly a third of the time nobody
+answers.
+
+**Proposal:** let customers pre-approve substitutes at checkout. Tick a box per
+item, the picker swaps without asking, everyone saves a phone call.
+
+**Hypothesis:** pre-approval converts a refund into a delivery, so it should
+recover part of the stock-out damage measured in `docs/02_plan.md`.
+
+**Primary metric:** 30-day repeat rate.
+
+---
+
+## The design, and the one decision that mattered
+
+| | |
+|---|---|
+| Unit | session |
+| Assignment | **at session start** |
+| Exposure | **at checkout** |
+| Split | 50/50 |
+| Window | 32 days, ending 39 days before the data does |
+
+Read rows two and three again. **Assignment and exposure are different events**,
+separated by an entire shopping journey. That gap is where the experiment breaks,
+and it is the most common structural flaw in industry A/B testing — not exotic,
+just invisible.
+
+### Why the window ends 39 days early
+
+A first draft ran the experiment across the final month of data. A 30-day
+retention outcome needs 30 days *after* assignment, so almost every session was
+censored: **1,555 evaluable outcomes out of 32,591 converted sessions.** The
+experiment could not answer the question it was built to ask.
+
+*(Those two figures are recorded from that superseded run and are the only
+hand-entered numbers in this document — the configuration that produced them no
+longer exists, so `render_docs.py` cannot regenerate them. Every other figure
+here is rendered from `reports/results.json`. Flagged rather than quietly left
+looking live.)*
+
+This is not a synthetic-data artefact. Running a test whose primary metric needs
+a longer horizon than the readout allows is routine, and it is usually
+discovered at the readout meeting, by which point the quarter is gone.
+
+---
+
+## Power, computed before the estimate
+
+| | |
+|---|---|
+| n per arm (assigned) | 78,443 |
+| Baseline repeat | 30.5% |
+| **MDE at 80% power** | **0.65 pp** |
+
+Stated first, on purpose. An MDE computed *after* the result is a
+rationalisation; computed first, it tells you whether the experiment was ever
+capable of answering the question. An underpowered null means nothing at all,
+and "no significant difference, ship it" is the most expensive sentence in
+experimentation.
+
+At 0.65 pp, this test can detect anything worth detecting. Whatever it finds,
+sample size is not the excuse.
+
+---
+
+## Check one: did randomisation happen?
+
+**SRM at assignment: no mismatch.** Split 0.5004, p = 0.77.
+
+The randomiser works. Whatever goes wrong next is not the randomiser's fault —
+which is exactly why this check has to come first. Skipping it means every later
+failure has two candidate explanations instead of one.
+
+## Check two: did randomisation *survive*?
+
+**SRM at checkout: mismatch. Split 0.5527, p = 3.3e-153.**
+
+That p-value is not a rounding error. It is 150 orders of magnitude past any
+threshold anyone has ever proposed. The population that reached checkout is not
+the population that was randomised.
+
+**Everything downstream of this line is uninterpretable.** Not weak.
+Uninterpretable. No CUPED, no stratification, no covariate adjustment, no larger
+sample recovers a comparison whose groups the treatment itself selected. The
+randomisation is gone and statistics cannot conjure it back.
+
+### The smoking gun
+
+| | Control | Treatment |
+|---|---|---|
+| Mean basket at checkout | 7.92 | 7.27 |
+
+Welch t = 17.5, p = 3e-68.
+
+Baskets differ across arms **after** randomisation. Random attrition cannot do
+this — random attrition removes a random sample, and a random sample has the
+same mean. Something selected who reached checkout, and it is not hard to guess
+what: pre-approving substitutes for a 20-item basket is 20 decisions. For a
+3-item basket it is 3. **The feature is hardest on exactly the customers who buy
+the most.**
+
+---
+
+## The two answers
+
+### The wrong one — retention among people who checked out
+
+**-0.39 pp, p = 0.299.**
+
+A clean null. No effect on retention. The feature is harmless, and shipping it is
+a matter of taste.
+
+This is the trap, and it is worth being precise about why.
+
+The analysis is **conditioned on converting** — and converting is exactly what
+the treatment broke. The lost users are not in the numerator, not in the
+denominator, not in the table at all. The feature's entire effect sits in the
+population this metric structurally cannot see.
+
+> **It is not a fake win. It is a fake *harmless*.**
+>
+> A fake win gets scrutinised — someone always asks why the number is so good.
+> A tidy null invites a shrug. **Nobody re-examines a result that asks nothing
+> of them.**
+
+### The right one — intention-to-treat over everyone assigned
+
+**-5.88 pp, p = 7.1e-150.**
+
+Every assigned session counts, including those that never converted. A session
+that never converted did not repeat within 30 days, and that is a real outcome,
+not missing data. Dropping it is the move that manufactures the null.
+
+---
+
+## What the feature actually does
+
+| | |
+|---|---|
+| Conversion, control | 44.03% |
+| Conversion, treatment | 35.69% |
+| **Effect** | **-8.34 pp** |
+| **Relative** | **18.9% of treatment conversions destroyed** |
+
+There it is. The feature does not fail to help. It **actively destroys nearly a
+fifth of the conversions in its arm** — and the primary metric was blind to it by
+construction.
+
+An analyst who reported the checkout number would have said "no effect, no harm,
+ship if you like." The feature would have shipped. Conversion would have fallen
+~19% on the treated surface, and the post-mortem six weeks later would have
+blamed seasonality.
+
+---
+
+## Decision
+
+> ## DO NOT SHIP
+
+Three findings, in the order they matter:
+
+1. **The SRM invalidates the checkout result outright.** Not a caveat — a
+   disqualification.
+2. **The feature costs conversion**, and that harm is invisible to a retention
+   metric computed among converters.
+3. **ITT — the only estimate this design supports — shows net harm.**
+
+The feature buys nothing and charges for it.
+
+---
+
+## What I would do instead
+
+The hypothesis is not dead; the *implementation* is. Pre-approval is sound and
+the checkout interstitial is what kills it.
+
+1. **Move pre-approval out of the checkout path.** Make it a profile setting or a
+   post-order prompt. Never put a 20-decision task between a customer and a
+   purchase.
+2. **Fix the measurement before re-running.** Assign at the point of *exposure*,
+   not session start — or if assignment must be early, define the analysis
+   population as everyone assigned and accept the dilution honestly.
+3. **Change the primary metric.** Retention was always a strange choice: it is
+   downstream of everything and needs a 30-day horizon. Substitution acceptance
+   rate reads in a day, is directly caused by the feature, and cannot hide a
+   conversion collapse.
+4. **Add conversion as a guardrail.** This entire failure was one guardrail metric
+   away from being caught on day two.
+
+---
+
+## The transferable lesson
+
+An SRM check is not paperwork. It is the difference between *"no effect"* and
+*"this feature is quietly destroying the funnel"* — and those two readings of
+the same experiment sit one chi-square test apart.
+
+Any treatment that changes the funnel changes who reaches the end of it.
+Comparing the survivors compares populations the treatment selected. The check
+costs one line of SQL and it is the only thing standing between a tidy null and
+a bad quarter.

@@ -1,0 +1,62 @@
+version: 2
+
+models:
+  - name: fct_orders
+    description: "One row per order. Carries item_fill_rate and is_clean_order side by side — the grain trap made explicit."
+    columns:
+      - name: order_id
+        description: "Grain. If this is not unique the dedup in stg_orders failed."
+        tests: [unique, not_null]
+      - name: customer_id
+        tests:
+          - not_null
+          - relationships: {to: ref('dim_customer'), field: customer_id}
+      - name: darkstore_key
+        description: "SCD2 surrogate. Null means the range join missed — an order outside every catchment version."
+        tests: [not_null]
+      - name: item_fill_rate
+        description: "Bounded 0-1. Range asserted in tests/assert_item_fill_rate_in_range.sql (no dbt_utils dependency)."
+      - name: n_items
+        tests: [not_null]
+
+  - name: fct_order_items
+    description: "Atomic grain: one row per order-item."
+    columns:
+      - name: product_key
+        description: "SCD2 surrogate. Null means no price version was live on the order date — a real gap, not a rounding issue."
+        tests: [not_null]
+      - name: category
+        description: "Never null: NULLs are bucketed to 'Unmapped' in staging so the totals still tie."
+        tests: [not_null]
+
+  - name: dim_product
+    columns:
+      - name: product_key
+        description: "Unique per product VERSION, not per product. product_id is intentionally NOT unique here."
+        tests: [unique, not_null]
+
+  - name: dim_darkstore
+    columns:
+      - name: darkstore_key
+        tests: [unique, not_null]
+
+  - name: dim_customer
+    columns:
+      - name: customer_key
+        tests: [unique, not_null]
+
+  - name: fct_customer_orders
+    columns:
+      - name: order_id
+        tests: [unique, not_null]
+      - name: tenure
+        tests:
+          - accepted_values: {values: ['new', 'established']}
+
+  - name: fct_sessions
+    columns:
+      - name: session_id
+        tests: [unique, not_null]
+      - name: variant
+        tests:
+          - accepted_values: {values: ['control', 'treatment'], config: {where: "variant is not null"}}

@@ -1,0 +1,12 @@
+# DuckDB stands in for BigQuery here so the whole project runs on a laptop with
+# no cloud account and no bill. The SQL is deliberately kept to the dialect
+# overlap: CTEs, window functions, QUALIFY, and standard casts all behave the
+# same on both. Where a real BigQuery deployment would differ (partitioning,
+# clustering, slot cost) that is documented rather than faked.
+beyond_fill_rate:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: ../data/warehouse.duckdb
+      threads: 4

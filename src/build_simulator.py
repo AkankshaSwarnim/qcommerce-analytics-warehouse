@@ -1,0 +1,321 @@
+"""
+build_simulator.py — render reports/simulator.html.
+
+WHY A SIMULATOR AND NOT ANOTHER CHART
+-------------------------------------
+The central finding of this project is an arithmetic identity:
+
+    P(clean order) = (1 - item_miss_rate) ^ basket_size
+
+Everyone nods at that equation and then goes back to reporting item fill rate.
+Nodding is not understanding. Understanding is dragging a slider from 3 items to
+16 and watching a 95% operation deliver a broken order to half its best
+customers — while the ops number barely moves.
+
+The simulator exists because the identity is unarguable and unfelt. A chart shows
+you the answer; a slider makes you produce it, and people believe numbers they
+produced.
+
+A SUBTLETY THE SIMULATOR MUST NOT PAPER OVER
+--------------------------------------------
+This page applies the identity at a FIXED basket size. The warehouse averages
+over a basket DISTRIBUTION, and those are not the same number:
+
+    E[(1-p)^N]  !=  (1-p)^E[N]
+
+The function is convex in N, so by Jensen's inequality the true average order
+fill rate is HIGHER than the identity evaluated at the mean basket. In this
+dataset: identity-at-the-mean predicts ~62.3%, the actual figure is ~66.9% — a
+gap of ~4.5pp.
+
+Both are correct; they answer different questions. The simulator answers "what
+happens to a basket of exactly N items", which is the one that builds intuition.
+The warehouse answers "what happened across all baskets", which is the one you
+report. Saying "plug in the mean basket" without this caveat would be teaching a
+mistake.
+
+THE THIRD PANEL IS THE POINT
+----------------------------
+Panels 1 and 2 demonstrate the mechanism. Panel 3 inverts it: given a TARGET
+order fill rate, what item fill rate would Operations have to hit?
+
+    required_miss_rate = 1 - target ^ (1 / basket_size)
+
+This is where the argument stops being interesting and starts being a budget
+conversation, because the answer for large baskets is usually "a number no
+darkstore has ever achieved."
+
+Defaults are seeded from reports/results.json so the page opens on the real
+finding rather than on invented numbers.
+
+RUN
+    python src/build_simulator.py
+"""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+RESULTS = Path("reports/results.json")
+OUT = Path("reports/simulator.html")
+
+
+def build(R: dict) -> str:
+    g = R["grain_trap"]
+    e = R["stockout_effect"]
+    ten = {t["tenure"]: t for t in e["by_tenure"]}
+
+    miss0 = round(g["item_miss_rate"] * 100, 1)
+    pred = (1 - g["item_miss_rate"]) ** g["mean_basket"]
+    gap = (g["order_fill_rate"] - pred) * 100
+    basket0 = round(g["mean_basket"])
+    actual = g["order_fill_rate"]
+    new_pp = abs(ten["new"]["effect_pp"])
+    est_pp = abs(ten["established"]["effect_pp"])
+
+    return f"""<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fill rate simulator — Beyond Fill Rate</title>
+<style>
+  :root {{ --navy:#14284B; --gold:#B08D2B; --red:#B3261E; --green:#2E6B4F; }}
+  * {{ box-sizing:border-box; }}
+  body {{ margin:0; background:#F7F6F3; color:#1A1A1A;
+         font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif; }}
+  header {{ background:var(--navy); color:#fff; padding:30px 28px; }}
+  header h1 {{ margin:0 0 6px; font-size:24px; }}
+  header p {{ margin:0; opacity:.85; font-size:14px; max-width:70ch; }}
+  main {{ max-width:920px; margin:0 auto; padding:26px; }}
+  .panel {{ background:#fff; border:1px solid #E3E0D8; border-radius:6px; padding:24px; margin-bottom:20px; }}
+  h2 {{ margin:0 0 4px; font-size:19px; color:var(--navy); }}
+  .why {{ margin:0 0 18px; color:#555; font-size:14px; }}
+  label {{ display:block; font-size:13px; font-weight:600; margin:16px 0 6px; }}
+  input[type=range] {{ width:100%; accent-color:var(--navy); }}
+  .readout {{ float:right; font-weight:700; color:var(--navy); font-variant-numeric:tabular-nums; }}
+  .two {{ display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:22px; }}
+  .stat {{ text-align:center; padding:18px; border-radius:5px; }}
+  .stat .n {{ font-size:36px; font-weight:700; font-variant-numeric:tabular-nums; }}
+  .stat .l {{ font-size:12px; margin-top:5px; }}
+  .ops {{ background:#EAF2EC; color:var(--green); }}
+  .cust {{ background:#FBEAE8; color:var(--red); }}
+  .gapline {{ text-align:center; margin-top:14px; font-size:15px; }}
+  .gapline b {{ font-size:24px; color:var(--navy); }}
+  canvas {{ width:100%; height:210px; margin-top:18px; }}
+  .note {{ margin-top:16px; padding:11px 14px; background:#FBF7EC; border-left:3px solid var(--gold);
+           font-size:13px; color:#5A4A1F; }}
+  .verdict {{ margin-top:16px; padding:13px 16px; background:var(--navy); color:#fff;
+              border-radius:5px; font-size:14px; }}
+  .verdict b {{ color:#F0D48A; }}
+  .impossible {{ background:var(--red) !important; }}
+  table {{ width:100%; border-collapse:collapse; font-size:14px; margin-top:8px; }}
+  th,td {{ padding:8px 10px; text-align:left; border-bottom:1px solid #EEE; }}
+  th {{ font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#777; }}
+  code {{ background:#F0EEE8; padding:1px 5px; border-radius:3px; font-size:12.5px; }}
+  footer {{ max-width:920px; margin:0 auto; padding:0 26px 40px; color:#777; font-size:12.5px; }}
+  @media (max-width:700px) {{ .two {{ grid-template-columns:1fr; }} }}
+</style></head><body>
+
+<header>
+  <h1>Fill rate simulator</h1>
+  <p>The finding of this project is an arithmetic identity, and everyone nods at it.
+     Drag the sliders instead. Watch a 95% operation deliver a broken order to half
+     its best customers.</p>
+</header>
+
+<main>
+
+  <div class="panel">
+    <h2>1 · The two fill rates</h2>
+    <p class="why">Set how often an item is missing, and how many items are in the basket.
+       <code>P(clean order) = (1 − miss rate) ^ basket size</code></p>
+
+    <label>Item miss rate <span class="readout" id="rMiss"></span></label>
+    <input type="range" id="miss" min="0.5" max="15" step="0.1" value="{miss0}">
+
+    <label>Basket size <span class="readout" id="rBasket"></span></label>
+    <input type="range" id="basket" min="1" max="25" step="1" value="{basket0}">
+
+    <div class="two">
+      <div class="stat ops"><div class="n" id="itemFill"></div>
+        <div class="l">ITEM fill rate<br>what the shift report shows</div></div>
+      <div class="stat cust"><div class="n" id="orderFill"></div>
+        <div class="l">ORDER fill rate<br>what the customer experiences</div></div>
+    </div>
+    <p class="gapline">Gap: <b id="gap"></b></p>
+
+    <div class="note" id="note1"></div>
+  </div>
+
+  <div class="panel">
+    <h2>2 · Why large baskets break</h2>
+    <p class="why">Order fill rate against basket size, at the miss rate you set above.
+       The dashed line is where your slider sits. Item fill rate is the flat line —
+       it barely moves, which is exactly the problem.</p>
+    <canvas id="curve" width="860" height="210"></canvas>
+    <div class="verdict" id="verdict2"></div>
+  </div>
+
+  <div class="panel">
+    <h2>3 · What would it take to fix it?</h2>
+    <p class="why">Invert the identity. Pick a target order fill rate, and this is the item
+       fill rate Operations would have to hit — for the basket size set above.
+       <code>required miss = 1 − target ^ (1 / basket size)</code></p>
+
+    <label>Target ORDER fill rate <span class="readout" id="rTarget"></span></label>
+    <input type="range" id="target" min="50" max="99" step="1" value="90">
+
+    <div class="two">
+      <div class="stat ops"><div class="n" id="reqFill"></div>
+        <div class="l">required ITEM fill rate</div></div>
+      <div class="stat cust"><div class="n" id="reqMiss"></div>
+        <div class="l">required item miss rate</div></div>
+    </div>
+    <div class="verdict" id="verdict3"></div>
+    <div class="note">This is where the argument stops being interesting and becomes a budget
+      conversation. Fill rate is <b>bought</b>, not decided — with inventory, which is the one
+      thing a darkstore has no room for. That is why "improve fill rate" is a wish, not a
+      recommendation.</div>
+  </div>
+
+  <div class="panel">
+    <h2>4 · What the broken order costs</h2>
+    <p class="why">Applying the measured retention damage to the order fill rate above.
+       Per 1,000 orders.</p>
+    <table>
+      <tr><th>Customer</th><th>Broken orders</th><th>Damage each</th><th>Repeat orders lost</th></tr>
+      <tr><td><b>New</b></td><td id="brokenN"></td><td>−{new_pp:.1f} pp</td><td id="lostN"></td></tr>
+      <tr><td>Established</td><td id="brokenE"></td><td>−{est_pp:.1f} pp</td><td id="lostE"></td></tr>
+    </table>
+    <div class="note">Effects are <b>observational</b>, not causal — stock-outs were not
+      randomised. And there is no rider data in this warehouse: lateness and stock-outs both
+      spike at peak, so some of this damage may belong to lateness.
+      <b>These figures are plausibly upward-biased.</b> See <code>docs/07_limitations.md</code>.</div>
+  </div>
+
+</main>
+
+<footer>
+  <p><b>Synthetic data.</b> Defaults seeded from <code>reports/results.json</code>
+     (miss rate {miss0}%, basket {basket0}). The identity is universal arithmetic;
+     the retention magnitudes are invented. See <code>docs/07_limitations.md</code>.</p>
+  <p><b>One honest caveat about this page.</b> It applies the identity at a <i>fixed</i>
+     basket size. The warehouse averages over a basket <i>distribution</i>, and
+     <code>E[(1−p)^N] ≠ (1−p)^E[N]</code> — the function is convex in N, so by Jensen's
+     inequality the true average is higher than the identity evaluated at the mean basket.
+     Here: identity-at-the-mean gives {pred:.1%}, the actual warehouse figure is
+     {actual:.1%} — a gap of {gap:.1f}pp. This page builds intuition about one basket;
+     the dashboard reports across all of them. Plugging the mean basket into the identity
+     and calling it the answer is a mistake, so it is flagged rather than hidden.</p>
+</footer>
+
+<script>
+const NEW_PP = {new_pp}, EST_PP = {est_pp};
+const $ = id => document.getElementById(id);
+const pct = x => (x * 100).toFixed(2) + '%';
+
+function orderFill(miss, n) {{ return Math.pow(1 - miss, n); }}
+
+function draw(miss, basket) {{
+  const c = $('curve'), ctx = c.getContext('2d');
+  const W = c.width, H = c.height, PAD = 34;
+  ctx.clearRect(0, 0, W, H);
+  const x = n => PAD + (n - 1) / 24 * (W - PAD * 2);
+  const y = v => H - PAD - v * (H - PAD * 2);
+
+  // axes
+  ctx.strokeStyle = '#DDD'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(PAD, PAD); ctx.lineTo(PAD, H - PAD); ctx.lineTo(W - PAD, H - PAD); ctx.stroke();
+  ctx.fillStyle = '#999'; ctx.font = '11px sans-serif';
+  [0, 0.5, 1].forEach(v => {{ ctx.fillText((v*100)+'%', 4, y(v) + 4);
+    ctx.strokeStyle = '#F0F0F0'; ctx.beginPath(); ctx.moveTo(PAD, y(v)); ctx.lineTo(W-PAD, y(v)); ctx.stroke(); }});
+  [1, 5, 10, 15, 20, 25].forEach(n => ctx.fillText(n, x(n) - 4, H - PAD + 16));
+
+  // item fill — the flat line that barely moves
+  ctx.strokeStyle = '#2E6B4F'; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.moveTo(x(1), y(1 - miss)); ctx.lineTo(x(25), y(1 - miss)); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#2E6B4F'; ctx.fillText('item fill', W - PAD - 52, y(1 - miss) - 6);
+
+  // order fill — the collapse
+  ctx.strokeStyle = '#B3261E'; ctx.lineWidth = 2.5; ctx.beginPath();
+  for (let n = 1; n <= 25; n++) {{ const py = y(orderFill(miss, n));
+    n === 1 ? ctx.moveTo(x(n), py) : ctx.lineTo(x(n), py); }}
+  ctx.stroke();
+  ctx.fillStyle = '#B3261E'; ctx.fillText('order fill', W - PAD - 56, y(orderFill(miss, 25)) - 8);
+
+  // where you are
+  ctx.strokeStyle = '#14284B'; ctx.setLineDash([3, 3]); ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(x(basket), PAD); ctx.lineTo(x(basket), H - PAD); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#14284B';
+  ctx.beginPath(); ctx.arc(x(basket), y(orderFill(miss, basket)), 4.5, 0, 7); ctx.fill();
+}}
+
+function update() {{
+  const miss = +$('miss').value / 100, basket = +$('basket').value;
+  const item = 1 - miss, order = orderFill(miss, basket);
+
+  $('rMiss').textContent = (miss * 100).toFixed(1) + '%';
+  $('rBasket').textContent = basket + (basket === 1 ? ' item' : ' items');
+  $('itemFill').textContent = pct(item);
+  $('orderFill').textContent = pct(order);
+  $('gap').textContent = ((item - order) * 100).toFixed(1) + ' points';
+
+  $('note1').innerHTML = '<b>What this hides:</b> the item number is an average over items. '
+    + 'Nobody buys an item — they buy a basket. At ' + basket + ' items, '
+    + ((1 - order) * 100).toFixed(0) + '% of orders are broken while the shift report reads '
+    + pct(item) + '.';
+
+  const o3 = orderFill(miss, 3), o16 = orderFill(miss, 16);
+  $('verdict2').innerHTML = 'At this miss rate, a 3-item basket gets a clean order <b>'
+    + pct(o3) + '</b> of the time. A 16-item basket: <b>' + pct(o16) + '</b>. '
+    + 'The item metric is identical for both. <b>Large baskets are our highest-value customers.</b>';
+
+  // panel 3
+  const target = +$('target').value / 100;
+  const reqMiss = 1 - Math.pow(target, 1 / basket);
+  $('rTarget').textContent = (target * 100).toFixed(0) + '%';
+  $('reqFill').textContent = pct(1 - reqMiss);
+  $('reqMiss').textContent = pct(reqMiss);
+  const v3 = $('verdict3');
+  if (reqMiss < 0.005) {{
+    v3.className = 'verdict impossible';
+    v3.innerHTML = 'To hit <b>' + (target*100).toFixed(0) + '%</b> order fill on a ' + basket
+      + '-item basket, Operations must miss fewer than <b>' + pct(reqMiss)
+      + '</b> of items. <b>No darkstore has ever run at that level.</b> The target is not '
+      + 'ambitious — it is arithmetic that has not been checked.';
+  }} else {{
+    v3.className = 'verdict';
+    v3.innerHTML = 'To hit <b>' + (target*100).toFixed(0) + '%</b> order fill on a ' + basket
+      + '-item basket, item fill must reach <b>' + pct(1 - reqMiss) + '</b> — versus '
+      + pct(item) + ' today. That is the size of the ask.';
+  }}
+
+  // panel 4 — per 1,000 orders
+  const broken = (1 - order) * 1000;
+  $('brokenN').textContent = broken.toFixed(0);
+  $('brokenE').textContent = broken.toFixed(0);
+  $('lostN').innerHTML = '<b style="color:#B3261E">' + (broken * NEW_PP / 100).toFixed(1) + '</b>';
+  $('lostE').textContent = (broken * EST_PP / 100).toFixed(1);
+
+  draw(miss, basket);
+}}
+
+['miss', 'basket', 'target'].forEach(id => $(id).addEventListener('input', update));
+update();
+</script>
+</body></html>"""
+
+
+def main() -> None:
+    if not RESULTS.exists():
+        raise SystemExit("Run `python src/analysis.py` first.")
+    OUT.write_text(build(json.loads(RESULTS.read_text())))
+    print(f"  wrote {OUT}  ({OUT.stat().st_size:,} bytes)")
+
+
+if __name__ == "__main__":
+    import os
+    os.chdir(Path(__file__).resolve().parents[1])
+    main()
