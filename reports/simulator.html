@@ -42,9 +42,14 @@
 
 <header>
   <h1>Fill rate simulator</h1>
-  <p>The finding of this project is an arithmetic identity, and everyone nods at it.
-     Drag the sliders instead. Watch a 95% operation deliver a broken order to half
-     its best customers.</p>
+  <p><b>Fill rate</b> = the share of a customer's ordered items that actually arrive.
+     An order is only "clean" if <i>every</i> item does. This tool lets you feel why
+     those two numbers pull apart — drag the sliders and watch a healthy-looking
+     operation deliver broken orders to its biggest customers.</p>
+  <p style="margin-top:10px;font-size:13px;opacity:.85">This page shows the maths for
+     <i>one</i> basket size at a time. The <a href="dashboard.html" style="color:#F0D48A">dashboard</a>
+     reports the real averages across every basket (item fill 94.1%, order fill 66.9%) —
+     which differ slightly, and panel 2 explains why.</p>
 </header>
 
 <main>
@@ -55,7 +60,7 @@
        <code>P(clean order) = (1 − miss rate) ^ basket size</code></p>
 
     <label>Item miss rate <span class="readout" id="rMiss"></span></label>
-    <input type="range" id="miss" min="0.5" max="15" step="0.1" value="5.9">
+    <input type="range" id="miss" min="1" max="12" step="0.1" value="5.9">
 
     <label>Basket size <span class="readout" id="rBasket"></span></label>
     <input type="range" id="basket" min="1" max="25" step="1" value="8">
